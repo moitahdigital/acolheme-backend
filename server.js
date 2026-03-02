@@ -27,24 +27,32 @@ app.post("/criar-pedido", async (req, res) => {
   try {
     const { nome, email, telefone, tipo_pedido } = req.body;
 
-    const { data: user } = await supabase
+    // Criar usuário
+    const { data: user, error: userError } = await supabase
       .from("users")
       .insert([{ nome, email, telefone }])
       .select()
       .single();
 
-    const { data: pedido } = await supabase
+    if (userError) throw userError;
+
+    // Criar pedido (usando coluna correta: plano)
+    const { data: pedido, error: pedidoError } = await supabase
       .from("pedidos")
       .insert([
         {
           user_id: user.id,
-          tipo_pedido,
+          plano: tipo_pedido,
+          valor: 0,
           status: "aguardando_pagamento"
         }
       ])
       .select()
       .single();
 
+    if (pedidoError) throw pedidoError;
+
+    // Enviar email automático
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: "moitahdigital@gmail.com",
@@ -54,7 +62,7 @@ app.post("/criar-pedido", async (req, res) => {
         <p><strong>Nome:</strong> ${nome}</p>
         <p><strong>Email:</strong> ${email}</p>
         <p><strong>Telefone:</strong> ${telefone}</p>
-        <p><strong>Tipo:</strong> ${tipo_pedido}</p>
+        <p><strong>Plano:</strong> ${tipo_pedido}</p>
         <p><strong>Status:</strong> Aguardando verificação manual no InfinityPay</p>
       `
     });
@@ -74,14 +82,17 @@ app.post("/liberar-acesso", async (req, res) => {
   try {
     const { pedido_id } = req.body;
 
-    await supabase
+    const { error } = await supabase
       .from("pedidos")
       .update({ status: "pago" })
       .eq("id", pedido_id);
 
+    if (error) throw error;
+
     res.json({ success: true });
 
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: "Erro ao liberar acesso" });
   }
 });
